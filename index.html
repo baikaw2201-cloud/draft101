@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="th" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบยืมอุปกรณ์กีฬา</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Prompt', sans-serif; }
+    .tab-active { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; }
+    .equipment-card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,0.15); }
+    .status-pending { background: #fef3c7; color: #92400e; }
+    .status-borrowed { background: #dbeafe; color: #1e40af; }
+    .status-approved { background: #dcfce7; color: #166534; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+    .modal-overlay { background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+  </style>
+ </head>
+ <body class="h-full bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+  <div id="app" class="h-full w-full overflow-auto">
+    <header class="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white shadow-lg">
+     <div class="max-w-6xl mx-auto px-4 py-6">
+      <div class="flex items-center justify-between">
+       <div class="flex items-center gap-4">
+        <div class="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center text-2xl">⚽</div>
+        <div>
+         <h1 class="text-2xl font-bold">ระบบยืมอุปกรณ์กีฬา</h1>
+         <p class="text-blue-100 text-sm">โรงเรียนของคุณ</p>
+        </div>
+       </div>
+       <div class="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full">
+         <span class="w-3 h-3 bg-green-400 rounded-full animate-pulse"></span>
+         <span class="text-sm">ออนไลน์</span>
+       </div>
+      </div>
+     </div>
+    </header>
+
+    <nav class="bg-white shadow-md sticky top-0 z-40">
+     <div class="max-w-6xl mx-auto px-4">
+      <div class="flex gap-2 py-3 overflow-x-auto">
+        <button onclick="switchTab('borrow')" id="tab-borrow" class="tab-active px-6 py-3 rounded-xl font-medium transition-all whitespace-nowrap">ยืมอุปกรณ์</button>
+        <button onclick="switchTab('history')" id="tab-history" class="px-6 py-3 rounded-xl font-medium transition-all whitespace-nowrap bg-gray-100">รายการยืม</button>
+        <button onclick="switchTab('return')" id="tab-return" class="px-6 py-3 rounded-xl font-medium transition-all whitespace-nowrap bg-gray-100">คืนอุปกรณ์</button>
+        <button onclick="switchTab('admin')" id="tab-admin" class="px-6 py-3 rounded-xl font-medium transition-all whitespace-nowrap bg-gray-100 text-purple-600">แอดมิน</button>
+      </div>
+     </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto px-4 py-6">
+      <div id="content-borrow" class="animate-fade-in">
+       <div id="equipment-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></div>
+       <div id="selected-equipment" class="hidden mb-6 bg-white rounded-2xl shadow-lg p-6 border border-blue-100">
+        <h3 class="text-lg font-semibold mb-4">อุปกรณ์ที่เลือก</h3>
+        <div id="selected-list" class="space-y-3"></div>
+       </div>
+       <div id="borrow-form-container" class="hidden bg-white rounded-2xl shadow-lg p-6 border border-blue-100">
+        <form id="borrow-form" class="space-y-4">
+          <div class="grid md:grid-cols-2 gap-4">
+            <input type="text" id="student-name" required class="w-full px-4 py-3 border rounded-xl" placeholder="ชื่อ-นามสกุล *">
+            <input type="text" id="student-id" required class="w-full px-4 py-3 border rounded-xl" placeholder="เลขประจำตัวนักเรียน *">
+          </div>
+          <div class="grid md:grid-cols-2 gap-4">
+            <input type="date" id="borrow-date" class="w-full px-4 py-3 border rounded-xl bg-gray-50" readonly>
+            <input type="date" id="return-date" required class="w-full px-4 py-3 border rounded-xl">
+          </div>
+          <button type="submit" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-blue-700 transition-all">ยืนยันการยืมอุปกรณ์</button>
+        </form>
+       </div>
+      </div>
+
+      <div id="content-history" class="hidden animate-fade-in"><div id="history-list" class="space-y-4"></div></div>
+      <div id="content-return" class="hidden animate-fade-in"><div id="return-list" class="space-y-4"></div></div>
+      <div id="content-admin" class="hidden animate-fade-in"><div id="admin-pending-list" class="space-y-4"></div></div>
+    </main>
+
+    <div id="toast" class="fixed bottom-4 right-4 transform translate-y-20 opacity-0 transition-all duration-300 z-50">
+      <div class="bg-gray-900 text-white px-6 py-4 rounded-xl shadow-lg flex items-center gap-3">
+        <span id="toast-message">บันทึกสำเร็จ</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Data & State
+    const equipmentData = [
+      { id: 'football', name: 'ลูกฟุตบอล', emoji: '⚽', stock: 10, color: 'from-green-500 to-emerald-600' },
+      { id: 'basketball', name: 'ลูกบาสเกตบอล', emoji: '🏀', stock: 8, color: 'from-orange-500 to-red-600' },
+      { id: 'volleyball', name: 'ลูกวอลเลย์บอล', emoji: '🏐', stock: 6, color: 'from-yellow-500 to-amber-600' },
+      { id: 'badminton', name: 'ไม้แบดมินตัน', emoji: '🏸', stock: 12, color: 'from-blue-500 to-indigo-600' }
+    ];
+
+    let selectedItems = {};
+    let borrowRecords = [];
+
+    // Functions
+    function switchTab(tab) {
+      ['borrow', 'history', 'return', 'admin'].forEach(t => {
+        document.getElementById(`content-${t}`).classList.toggle('hidden', t !== tab);
+        document.getElementById(`tab-${t}`).className = t === tab ? 'tab-active px-6 py-3 rounded-xl font-medium transition-all' : 'px-6 py-3 rounded-xl font-medium transition-all bg-gray-100';
+      });
+      if(tab === 'history') renderHistory();
+      if(tab === 'return') renderReturnList();
+      if(tab === 'admin') renderAdminList();
+    }
+
+    function renderEquipmentGrid() {
+      const grid = document.getElementById('equipment-grid');
+      grid.innerHTML = equipmentData.map(eq => {
+        const selected = selectedItems[eq.id] || 0;
+        return `
+          <div class="equipment-card bg-white rounded-2xl shadow-md p-4 border-2 ${selected > 0 ? 'border-blue-500' : 'border-transparent'}">
+            <div class="bg-gradient-to-br ${eq.color} w-16 h-16 rounded-xl flex items-center justify-center text-3xl mb-3 mx-auto shadow-lg">${eq.emoji}</div>
+            <h3 class="font-semibold text-center mb-1">${eq.name}</h3>
+            <p class="text-xs text-center text-gray-500 mb-3">คงเหลือ: ${eq.stock} ชิ้น</p>
+            <div class="flex items-center justify-center gap-2">
+              <button onclick="updateQty('${eq.id}', -1)" class="w-8 h-8 bg-gray-100 rounded-lg">-</button>
+              <span class="font-bold">${selected}</span>
+              <button onclick="updateQty('${eq.id}', 1)" class="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg">+</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateQty(id, delta) {
+      const current = selectedItems[id] || 0;
+      const newVal = Math.max(0, current + delta);
+      if(newVal === 0) delete selectedItems[id]; else selectedItems[id] = newVal;
+      renderEquipmentGrid();
+      updateSelectedUI();
+    }
+
+    function updateSelectedUI() {
+      const hasItems = Object.keys(selectedItems).length > 0;
+      document.getElementById('selected-equipment').classList.toggle('hidden', !hasItems);
+      document.getElementById('borrow-form-container').classList.toggle('hidden', !hasItems);
+      
+      document.getElementById('selected-list').innerHTML = Object.entries(selectedItems).map(([id, qty]) => {
+        const eq = equipmentData.find(e => e.id === id);
+        return `<div class="flex justify-between bg-blue-50 p-3 rounded-lg"><span>${eq.name}</span><b>${qty} ชิ้น</b></div>`;
+      }).join('');
+    }
+
+    document.getElementById('borrow-form').onsubmit = (e) => {
+      e.preventDefault();
+      Object.entries(selectedItems).forEach(([id, qty]) => {
+        borrowRecords.push({
+          id: Date.now() + Math.random(),
+          name: equipmentData.find(ex => ex.id === id).name,
+          qty,
+          student: document.getElementById('student-name').value,
+          date: document.getElementById('borrow-date').value,
+          status: 'borrowed'
+        });
+      });
+      selectedItems = {};
+      updateSelectedUI();
+      renderEquipmentGrid();
+      showToast("บันทึกการยืมสำเร็จ!");
+      switchTab('history');
+    };
+
+    function renderHistory() {
+      const list = document.getElementById('history-list');
+      if (borrowRecords.length === 0) { list.innerHTML = "<p class='text-center py-10 text-gray-400'>ไม่มีประวัติการยืม</p>"; return; }
+      list.innerHTML = borrowRecords.map(r => `
+        <div class="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center">
+          <div><p class="font-bold">${r.name} (${r.qty} ชิ้น)</p><p class="text-sm text-gray-500">ผู้ยืม: ${r.student}</p></div>
+          <span class="px-3 py-1 rounded-full text-xs ${r.status === 'borrowed' ? 'status-borrowed' : 'status-approved'}">${r.status === 'borrowed' ? 'กำลังยืม' : 'คืนแล้ว'}</span>
+        </div>
+      `).join('');
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      document.getElementById('toast-message').innerText = msg;
+      t.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => t.classList.add('translate-y-20', 'opacity-0'), 3000);
+    }
+
+    // Initialize
+    window.onload = () => {
+      document.getElementById('borrow-date').value = new Date().toISOString().split('T')[0];
+      renderEquipmentGrid();
+    };
+  </script>
+ </body>
+</html>
